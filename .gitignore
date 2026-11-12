@@ -1,0 +1,20 @@
+# 의존성
+node_modules/
+
+# 환경 변수 (API 키 등) — 예시 파일만 올린다
+.env
+.env.*
+!.env.example
+
+# OS / 에디터
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# 빌드 결과물 (server)
+dist/
+coverage/
+
+# TypeScript 증분 빌드 캐시
+*.tsbuildinfo
