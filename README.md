@@ -27,13 +27,20 @@ PC와 아이폰이 같은 Wi-Fi에 있어야 한다.
 ### 서버
 
 ```bash
+docker compose up -d   # 저장소 루트에서. PostgreSQL (127.0.0.1:5433, 개발용 fridge + 테스트용 fridge_test)
 cd server
 npm install
 cp .env.example .env   # GEMINI_API_KEY 채우기 (Google AI Studio에서 발급)
 npm run start:dev
 ```
 
-`http://localhost:3000`에서 뜬다. 키가 없어도 서버는 뜨고, 사진 인식만 503으로 실패한다.
+`http://localhost:3000`에서 뜬다. 뜰 때 안 돌린 DB 마이그레이션을 적용한다.
+키가 없어도 서버는 뜨고, 사진 인식만 503으로 실패한다.
+
+```bash
+npm test           # 단위 테스트 (DB 필요 없음)
+npm run test:e2e   # e2e 테스트 — 실제 PostgreSQL(fridge_test)이 떠 있어야 한다
+```
 
 ### API
 
@@ -47,24 +54,59 @@ npm run start:dev
   "items": [
     {
       "name": "우유",
+      "description": null,
       "productName": "서울우유 1L",
+      "emoji": "🥛",
+      "category": "dairy",
       "quantity": 2,
       "unit": "팩",
       "storage": "fridge",
       "expiryDate": "2026-11-20",
       "shelfLifeDays": 10,
-      "confidence": "high"
+      "confidence": "high",
+      "boxes": [
+        { "x": 0.1, "y": 0.1, "width": 0.2, "height": 0.5 },
+        { "x": 0.35, "y": 0.1, "width": 0.2, "height": 0.5 }
+      ]
+    },
+    {
+      "name": null,
+      "description": "뚜껑 있는 불투명 플라스틱 통",
+      "category": "other",
+      "emoji": "📦",
+      "confidence": "low",
+      "...": "나머지 필드는 위와 같음"
     }
   ]
 }
 ```
 
+- `boxes`: 사진 위에 그릴 위치. 사진 너비·높이에 대한 0~1 비율이고 왼쪽 위가 (0, 0). 보이는 물건마다 하나씩
+- `name`이 `null`이면 뭔지 모르는 물체 → 사진에 `?`로 표시하고 `description`을 보여 주며 사용자가 이름을 적는다 (`confidence`는 항상 `low`)
+- `category`: `vegetable` `fruit` `meat_egg` `seafood` `dairy` `tofu_processed` `side_dish` `sauce` `beverage` `ready_meal` `other` (화면 이름은 [docs/features.md](docs/features.md) 결정 4)
+- `emoji`: 모델이 고른 이모지, 못 고르면 카테고리 기본 이모지
 - `expiryDate`는 포장에 찍힌 날짜를 읽었을 때만 있고, 없으면 `null` → 앱이 `오늘 + shelfLifeDays`를 기본값으로 제안한다
+- 앱은 사진 방향(EXIF)을 바로잡은 뒤 보내야 박스가 화면과 맞는다
 - 오류: `400` 사진 없음·이미지 아님, `413` 10MB 초과, `502` 모델 답이 형식에 안 맞음, `503` Gemini 호출 실패(키 없음·한도 초과 등)
 
 ```bash
 curl -F "photo=@groceries.jpg" http://localhost:3000/recognition
 ```
+
+**재고 `/items`** — 모델과 규칙은 [docs/data-model.md](docs/data-model.md)
+
+| 메서드 | 경로 | 하는 일 | 응답 |
+|---|---|---|---|
+| `GET` | `/items` | 있는 재료, 유통기한 순. `?category=` `?q=` `?status=consumed\|discarded` `?limit=` | `200 { items }` |
+| `POST` | `/items` | `{ items: [...] }` 여러 개 한 번에 (하나라도 틀리면 전부 안 들어감) | `201 { items }` |
+| `PATCH` | `/items/:id` | 이름·수량·보관 위치·유통기한 등 수정. 유통기한만 고치면 `expirySource`가 `user` | `200` |
+| `POST` | `/items/:id/consume` | 먹었어요. `{ amount }` 없으면 전부. 0개가 되면 `consumed` | `200` |
+| `POST` | `/items/:id/discard` | 버렸어요 (`discarded`, 수량은 버린 개수) | `200` |
+| `DELETE` | `/items/:id` | 잘못 등록한 것 지우기 | `204` |
+
+등록할 재료 하나: `name` `productName?` `category` `emoji?` `quantity` `unit?` `storage` `expiresOn`(YYYY-MM-DD) `expirySource`(`label`\|`estimated`\|`user`) `source`(`photo`\|`manual`)
+
+오류: `400` 형식 오류, `404` 없는 재료, `409` 이미 다 먹었거나 버린 재료
 
 ## v1 범위
 
@@ -75,7 +117,10 @@ curl -F "photo=@groceries.jpg" http://localhost:3000/recognition
 4. 요리 추천 — 유통기한이 가까운 재료 우선
 5. 유통기한 알림 — 2일 전, 폰 안에서 예약하는 로컬 알림
 
-**뺄 것**: 냉장고 전체 사진 인식, 가족 공유, 영수증 인식, 레시피 DB 구축, 스토어 출시
+**뺄 것**: 카메라 실시간 인식, 가족 공유, 영수증 인식, 레시피 DB 구축, 스토어 출시
+(11/13 변경: 냉장고 안 사진도 받는다. 찍은 사진 위에 물체 이름을 띄우고, 모르는 건 `?`로 사용자에게 묻는다)
+
+화면별 기능 목록과 시안 대비 빠진 것: [docs/features.md](docs/features.md)
 
 ## AI 페어프로그래밍
 
@@ -97,12 +142,20 @@ curl -F "photo=@groceries.jpg" http://localhost:3000/recognition
 - **사진 인식 API** (2026-11-13): `server/src/recognition/`과 테스트는 Claude Code가 작성. NestJS 공식 `@nestjs/ai` + `@ai-sdk/google` 사용.
   - 설계: 모델 답은 Zod 스키마로 받되 숫자·날짜 제약은 느슨하게 두고 서버에서 정리한다(조금만 어긋나도 답 전체가 거부되지 않게). 유통기한은 포장에서 읽은 것만 받고, 없으면 보관 일수로 앱이 제안한다.
   - 검수: 빌드·oxlint·Prettier 통과, 단위 17개(가짜 모델로 정상·정리·502·503, 날짜 변환) + e2e 5개(업로드 정상·사진 없음·이미지 아님·10MB 초과) 통과, 키 없이 실제 경로를 호출해 503이 나는 것 확인. **실제 Gemini 호출은 키 발급 후 아직 확인 전.**
+- **사진 위 표시·모르는 물체** (2026-11-13): 응답에 박스·`?`(이름 null)·카테고리·이모지 추가.
+  - 직접 판단: 냉장고 안이든 장 본 것이든 찍으면 사진 위에 이름을 띄우고, 상자처럼 뭔지 모르는 건 `?`로 두고 사용자가 적게 한다. 카테고리 11개 확정.
+  - 검수: 좌표 변환(뒤집힌 좌표·범위 밖·형식 오류), 모르는 물체 처리, 이모지 기본값 테스트 추가 → 단위 37개 + e2e 5개 통과.
+- **재고 API** (2026-11-13): `server/src/items/`, 마이그레이션, `compose.yaml`, e2e는 Claude Code가 작성. TypeORM + PostgreSQL.
+  - 직접 판단: ORM은 TypeORM(JPA와 개념이 같아서), 다 먹거나 버린 것도 기록으로 남긴다, "먹었어요"는 1개씩 + 전부 둘 다.
+  - 설계: 한 행 = 한 번에 산 묶음, 유통기한은 날짜만 저장하고 D-day는 폰이 계산, `synchronize` 대신 직접 쓴 SQL 마이그레이션, 앱 검증(Zod)과 DB CHECK 제약 이중으로.
+  - 검수: e2e 17개를 실제 PostgreSQL(테스트용 DB)로 돌림 — 일괄 등록 롤백, 정렬·검색(`%` 글자 그대로), 상태 전이, 409, DB 제약. **"동시에 두 번 눌러도 안 꼬인다" 테스트는 처음 버전이 잠금을 빼도 통과해서(아무것도 검증 못 함) 다시 짬**: 테스트가 행을 먼저 잡아 두고 요청을 보내, 잠금을 빼면 실패(먹은 기록 유실)하는 것까지 확인.
 
 ## 다음에 할 일
 
 - [ ] Gemini API 키 발급 (Google AI Studio) → `server/.env`에만 둔다
 - [ ] 실제 장 본 사진으로 `POST /recognition` 확인: 한글 상품명·유통기한을 얼마나 읽는지, 응답 시간
 - [x] 서버: 사진을 받아 Gemini로 재료 목록(JSON)을 돌려주는 API
-- [ ] 재고 데이터 모델 정하기 (이름, 수량, 보관 위치, 유통기한)
+- [x] 재고 데이터 모델·API (`/items`)
+- [ ] 요리 추천: 어디에, 어떤 형태로 보여 줄지 정하기 (시안에 없음)
 - [ ] 아이폰 Expo Go로 첫 화면 띄우기 (맥북)
 - [ ] (ml, v2) 실제 냉장고 사진 데이터로 리허설 모델 테스트, 클래스 정하기

@@ -1,0 +1,24 @@
+# 로컬 개발용 PostgreSQL. 저장소 루트에서 `docker compose up -d`로 띄운다.
+# 개발용 DB(fridge)와 e2e 테스트용 DB(fridge_test)가 같이 만들어진다.
+# 비밀번호는 로컬 전용이다. 포트는 이 PC(127.0.0.1)에만 연다.
+# 5432는 다른 프로젝트 DB와 겹치기 쉬워서 5433을 쓴다.
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: fridge
+      POSTGRES_PASSWORD: fridge
+      POSTGRES_DB: fridge
+    ports:
+      - '127.0.0.1:5433:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./server/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U fridge -d fridge']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  db-data:
