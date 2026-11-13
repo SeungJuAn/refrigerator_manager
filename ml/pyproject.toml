@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "냉장고 앱 식재료 객체탐지 실험 (YOLO)"
 requires-python = "==3.12.*"
 dependencies = [
+    "pillow>=13.0.0",
+    "pyyaml>=6.0.3",
     "torch>=2.14.1",
     "torchvision>=0.29.1",
     "ultralytics>=8.4.211",
