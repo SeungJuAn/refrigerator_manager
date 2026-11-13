@@ -14,8 +14,11 @@ import {
   RECOGNITION_INSTRUCTIONS,
   RECOGNITION_REQUEST,
 } from './recognition.prompt.js';
+import { CATEGORY_EMOJI } from '../common/food.js';
 import {
-  RecognitionResultSchema,
+  ModelResultSchema,
+  type Box,
+  type ModelItem,
   type RecognitionResult,
   type RecognizedItem,
 } from './recognition.schema.js';
@@ -36,7 +39,7 @@ export class RecognitionService {
     try {
       const { object } = await this.ai.generateObject({
         label: 'recognize-groceries',
-        schema: RecognitionResultSchema,
+        schema: ModelResultSchema,
         instructions: RECOGNITION_INSTRUCTIONS,
         messages: [
           {
@@ -53,7 +56,9 @@ export class RecognitionService {
           },
         ],
       });
-      return { items: object.items.map(normalizeItem).filter(hasName) };
+      return {
+        items: object.items.map(normalizeItem).filter(isWorthShowing),
+      };
     } catch (error) {
       if (error instanceof AiOutputError) {
         this.logger.warn(
@@ -81,20 +86,59 @@ export class RecognitionService {
   }
 }
 
-function normalizeItem(item: RecognizedItem): RecognizedItem {
+function normalizeItem(item: ModelItem): RecognizedItem {
+  const name = item.name?.trim() || null;
+  const boxes = item.boxes.map(toBox).filter((box): box is Box => box !== null);
   return {
     ...item,
-    name: item.name.trim(),
+    name,
+    // 이름을 알면 설명은 필요 없다 (앱은 이름이 없을 때만 설명을 보여 준다)
+    description: name ? null : item.description?.trim() || null,
     productName: item.productName?.trim() || null,
-    quantity: item.quantity > 0 ? item.quantity : 1,
+    emoji: normalizeEmoji(item.emoji) ?? CATEGORY_EMOJI[item.category],
+    // 박스가 개수보다 많으면 개수를 적게 센 것이다. 반대(계란 한 판 = 박스 1, 6개)는 그대로 둔다
+    quantity: Math.max(item.quantity > 0 ? item.quantity : 1, boxes.length),
     unit: item.unit.trim() || '개',
     expiryDate: normalizeDate(item.expiryDate),
     shelfLifeDays: Math.max(1, Math.round(item.shelfLifeDays)),
+    // 뭔지 모르는 항목은 무조건 확인이 필요하다
+    confidence: name ? item.confidence : 'low',
+    boxes,
   };
 }
 
-function hasName(item: RecognizedItem): boolean {
-  return item.name.length > 0;
+/** 이름도, 위치도, 설명도 없으면 사용자가 뭔지 알 방법이 없어서 뺀다. */
+function isWorthShowing(item: RecognizedItem): boolean {
+  return (
+    item.name !== null || item.boxes.length > 0 || item.description !== null
+  );
+}
+
+/** Gemini의 [ymin, xmin, ymax, xmax] (0~1000) → { x, y, width, height } (0~1). 형식이 틀리거나 넓이가 0이면 null. */
+export function toBox(raw: number[]): Box | null {
+  if (raw.length !== 4 || !raw.every(Number.isFinite)) return null;
+  const [y1, x1, y2, x2] = raw.map(
+    (n) => Math.min(1000, Math.max(0, n)) / 1000,
+  );
+  const width = Math.abs(x2 - x1);
+  const height = Math.abs(y2 - y1);
+  if (width === 0 || height === 0) return null;
+  return {
+    x: round4(Math.min(x1, x2)),
+    y: round4(Math.min(y1, y2)),
+    width: round4(width),
+    height: round4(height),
+  };
+}
+
+/** 그림 문자가 들어 있고 글자·숫자가 없는 짧은 문자열만 이모지로 인정한다. */
+export function normalizeEmoji(value: string | null): string | null {
+  const emoji = value?.trim();
+  if (!emoji || emoji.length > 16) return null;
+  if (!/\p{Extended_Pictographic}/u.test(emoji)) return null;
+  if (/[\p{L}\p{N}]/u.test(emoji.replace(/\p{Extended_Pictographic}/gu, '')))
+    return null;
+  return emoji;
 }
 
 /** "2026-11-20", "2026.11.20", "2026/11/20", "20261120" → "2026-11-20". 실제 없는 날짜나 다른 형식이면 null. */
@@ -109,6 +153,10 @@ export function normalizeDate(value: string | null): string | null {
     date.getUTCMonth() === month - 1 &&
     date.getUTCDate() === day;
   return valid ? date.toISOString().slice(0, 10) : null;
+}
+
+function round4(n: number): number {
+  return Math.round(n * 10000) / 10000;
 }
 
 function errorMessage(error: unknown): string {

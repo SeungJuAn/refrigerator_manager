@@ -12,15 +12,32 @@ const PNG = Buffer.from(
   'base64',
 );
 
-const MILK = {
+// 모델(Gemini)이 답하는 형태
+const MILK_FROM_MODEL = {
   name: '우유',
+  description: null,
   productName: '서울우유 1L',
+  emoji: '🥛',
+  category: 'dairy',
   quantity: 2,
   unit: '팩',
   storage: 'fridge',
   expiryDate: '2026-11-20',
   shelfLifeDays: 10,
   confidence: 'high',
+  boxes: [
+    [100, 100, 600, 300],
+    [100, 350, 600, 550],
+  ],
+};
+
+// API가 돌려주는 형태: 박스가 0~1 비율의 x, y, width, height로 바뀐다
+const MILK = {
+  ...MILK_FROM_MODEL,
+  boxes: [
+    { x: 0.1, y: 0.1, width: 0.2, height: 0.5 },
+    { x: 0.35, y: 0.1, width: 0.2, height: 0.5 },
+  ],
 };
 
 describe('POST /recognition (e2e)', () => {
@@ -28,7 +45,7 @@ describe('POST /recognition (e2e)', () => {
   let model: FakeModel;
 
   beforeEach(async () => {
-    model = new FakeModel([{ object: { items: [MILK] } }]);
+    model = new FakeModel([{ object: { items: [MILK_FROM_MODEL] } }]);
     // 실제 Gemini 대신 FakeModel이 답한다. 키가 없어도 돈다.
     const moduleRef = await overrideModels(
       Test.createTestingModule({ imports: [AppModule] }),
