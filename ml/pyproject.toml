@@ -1,0 +1,24 @@
+[project]
+name = "fridge-ml"
+version = "0.1.0"
+description = "냉장고 앱 식재료 객체탐지 실험 (YOLO)"
+requires-python = "==3.12.*"
+dependencies = [
+    "torch>=2.14.1",
+    "torchvision>=0.29.1",
+    "ultralytics>=8.4.211",
+]
+
+[tool.uv]
+# 학습은 Windows(회사 PC)와, 필요하면 Linux 클라우드 GPU에서만 돌린다
+environments = ["sys_platform == 'win32'", "sys_platform == 'linux'"]
+
+# RTX 50 시리즈(Blackwell)는 CUDA 12.8 이상 빌드가 필요하다 → PyTorch CUDA 13.0 빌드를 쓴다
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130" }]
+torchvision = [{ index = "pytorch-cu130" }]

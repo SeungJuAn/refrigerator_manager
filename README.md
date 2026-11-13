@@ -9,6 +9,7 @@
 |---|---|
 | `app/` | 아이폰 앱 — React Native + Expo (TypeScript) |
 | `server/` | API 서버 — NestJS (TypeScript strict) |
+| `ml/` | 식재료 객체탐지 실험 — YOLO (v2용, [ml/README.md](ml/README.md)) |
 
 ## 실행
 
@@ -52,6 +53,9 @@ npm run start:dev
 - **초기 세팅** (2026-11-12): 스캐폴딩(Expo `blank-typescript`, NestJS `--strict`)과 이 README는 Claude Code가 생성.
   - 직접 판단: 모바일 웹 대신 앱으로 간다(유통기한 알림·카메라가 핵심), 알림은 v1에서 로컬 알림으로, 냉장고 전체 인식 대신 넣을 때 찍기.
   - 검수: 앱 타입체크, 서버 빌드·단위 테스트·e2e 테스트 통과 확인.
+- **ML 환경** (2026-11-13): uv 프로젝트, PyTorch(CUDA 13.0 빌드), Ultralytics 설치는 Claude Code가 진행.
+  - 직접 판단: 객체탐지는 v1이 아니라 v2 실험으로, 데이터는 AI Hub + 직접 촬영으로 채운다.
+  - 검수: GPU 인식 확인, 샘플 데이터(coco8)로 3 epoch 학습 통과.
 
 ## 다음에 할 일
 
